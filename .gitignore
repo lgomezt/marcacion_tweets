@@ -114,4 +114,7 @@ dmypy.json
 .pyre/
 
 # Files
-.csv
+*.csv
+*.xlsx
+*.xlx
+*.rdata
