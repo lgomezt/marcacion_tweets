@@ -11,7 +11,7 @@ import re
 import random
 from datetime import datetime
 
-path_data = os.getcwd() + "/data/"
+path_data = 'c:\\Users\\User\\OneDrive - Universidad de los Andes\\Asistencia de investigacion\\Twitter\\Data\\'
 
 # Importamos los tweets
 tweets = pd.read_csv(path_data + "all_tweets.csv")
@@ -23,7 +23,7 @@ tweets["Text"] = tweets["Text"].apply(lambda x: re.sub("RT @.+: ", "", x))
 tweets = tweets.drop_duplicates("Text").reset_index(drop = True)
 
 
-app = dash.Dash(__name__, __name__external_stylesheets = [dbc.themes.CYBORG])
+app = dash.Dash(__name__, external_stylesheets = [dbc.themes.CYBORG])
 server = app.server
 
 navbar = dbc.Navbar([
