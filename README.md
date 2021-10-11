@@ -20,5 +20,5 @@ Deberá reemplazar los puntos con la información de las credencial para acceder
 5. Desde la terminal activamos el ambiente escribiendo: `conda activate semillero_redes`.
 6. Procedemos a instalar los paquetes necesarios: `pip install requirements.txt`.
 7. Solo queda ejecutar la herramienta escribiendo: `python run.py`
-
+8. Espere hasta que en su consola salga un mensaje diciendo `* Running on http://127.0.0.1:8050/`. Cuando eso suceda, ingrese la ruta `http://127.0.0.1:8050/` en su navegador para interactuar con el aplicativo.
 
