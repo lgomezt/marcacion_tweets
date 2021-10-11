@@ -37,7 +37,7 @@ def config(filename = 'database.ini', section = 'postgresql'):
     return db
 
 # Importamos los tweets
-query = "SELECT * FROM public.tweet;"
+query = "SELECT id, tweet_text FROM public.tweet;"
 credenciales = config()
 conexion = psycopg2.connect(**credenciales)
 tweets = pd.read_sql_query(sql = query, con = conexion)
@@ -74,7 +74,9 @@ texto = html.Div([
 
 mensaje = "De las opciones presentadas a continuación, seleccione la que crea que describe mejor el mensaje presentado."
 instrucciones = html.Div([
-    html.H5(mensaje, style = {'textAlign': 'justify'})
+    html.H5(mensaje, style = {'textAlign': 'justify'}),
+    # Guardamos el índice de la fila, pero no lo mostramos
+    html.Div(id = 'fila', style= {'display': 'None'})
     ], style = {'padding': '10px 60px 10px'})
 
 botones = html.Div([
@@ -88,7 +90,7 @@ botones = html.Div([
 ], style = {'padding': '10px 60px 10px'})
 
 # Definimos layout
-app.layout = html.Div(children = [navbar, texto, instrucciones, botones, dcc.Store(id = 'Resultados')])
+app.layout = html.Div(children = [navbar, texto, instrucciones, botones])
 
 # Callbacks
 
@@ -105,23 +107,53 @@ def get_ip():
         s.close()
     return IP
 
+# Función para subir resultados a nuestra base message en postgres
+def guardar_resultado(fila):
+    """
+    Usamos esta función para cargar la votación del usuario en la base de datos message.
+    El parámetro fila debe ser una tupla que contenga 5 valores que hacen alusión a las variables
+    usuario1, usuario2, id_tweet, marca y fecha.
+    """
+    try:
+        # Cargamos los resultados en la base message
+        credenciales = config(filename = 'database.ini', section = 'postgresql')
+        conexion = psycopg2.connect(**credenciales)
+        # Creamos un cursor para editar la base
+        cursor = conexion.cursor()
+
+        # Insertamos una fila
+        query = """INSERT INTO message (usuario1, usuario2, id_tweet, marca, fecha) VALUES (%s, %s, %s, %s, %s);"""
+        cursor.execute(query, fila)
+        conexion.commit()
+        
+        count = cursor.rowcount
+        print(count, "Se ingresó la fila", fila)
+
+        if conexion:
+            cursor.close()
+            conexion.close()
+
+    except (Exception, psycopg2.Error) as error:
+        print("No se pudo ingresar la fila", error)
+
 # Cambiar de texto cuando se presione algún botón y guardar resultados.
 @app.callback(Output('texto_tweet', 'children'),
-              Output('Resultados', 'data'),
+              Output('fila', 'children'),
               Input('izquierda', 'n_clicks'),
               Input('centro', 'n_clicks'),
               Input('derecha', 'n_clicks'),
               Input('no_idea', 'n_clicks'),
               Input('no_aplica', 'n_clicks'),
-              Input('Resultados', 'data'),
+              Input('fila', 'children'),
               )
-def cambiar_texto(izq, cen, der, no_idea, no_aplica, resultados):
+def cambiar_texto(izq, cen, der, no_idea, no_aplica, fila):
+    # Cuando inicia la app se escoge un texto al azar
     if (izq is None) & (cen is None) & (der is None) & (no_idea is None) & (no_aplica is None):
         fila = random.randint(0, tweets.shape[0])
         tweet = tweets.iloc[fila].tweet_text
-        resultados = pd.DataFrame()
-        return(tweet, resultados.to_json(orient = 'split'))
+        return(tweet, fila)
     
+    # Se guarda la clasificación del usuario
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
     if 'izquierda' in changed_id:
         valor = -1
@@ -134,25 +166,22 @@ def cambiar_texto(izq, cen, der, no_idea, no_aplica, resultados):
     elif 'no_aplica' in changed_id:
         valor = "no_aplica"
 
+    # Guardamos los resultados en una tupla 
+    usuario1 = get_ip()
+    usuario2 = getpass.getuser()
+    id_tweet = str(tweets.iloc[fila].id)
+    marca = str(valor)
+    fecha = str(datetime.now())
+    resultado = (usuario1, usuario2, id_tweet, marca, fecha)
+    
+    # Subir resultados a nuestra base message en postgres 
+    guardar_resultado(resultado)
+
+    # Cambiamos el texto
     fila = random.randint(0, tweets.shape[0])
     tweet = tweets.iloc[fila].tweet_text
 
-    if resultados is None:
-        resultados = pd.DataFrame()
-    else:
-        resultados = pd.read_json(resultados, orient = 'split')
-
-    resultado = pd.DataFrame({
-        "usuario1": get_ip(),
-        "usuario2": getpass.getuser(), 
-        "id_tweet": tweets.iloc[fila].id,
-        "marca": valor,
-        "hora": datetime.now()
-        }, index = [0])
-
-    resultados = pd.concat([resultados, resultado], axis = 0).reset_index(drop = True)
-
-    return(tweet, resultados.to_json(orient = 'split'))
+    return(tweet, fila)
 
 if __name__ == "__main__":
-    app.run_server(debug = True)
+    app.run_server()
