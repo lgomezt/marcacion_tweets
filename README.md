@@ -1,5 +1,5 @@
 # Marcador de tweets 
-Para ejecutar esta aplicación es necesario que cuente con [Anaconda](https://www.anaconda.com/products/individual#Downloads) y [git](https://git-scm.com/downloads) instalados en su computador. Luego puede proceder con los siguientes pasos.
+Para ejecutar esta aplicación es necesario que cuente con [Anaconda](https://www.anaconda.com/products/individual#Downloads), [git](https://git-scm.com/downloads) y [Postgres](https://www.postgresql.org/download/) instalados en su computador. Luego puede proceder con los siguientes pasos.
 
 1. Abrir la consola y entrar a la carpeta donde desea alojar este repositorio. Un ejemplo en Windows sería: `cd "C:\Users\User\Downloads"`.
 2. Clonar el repositorio a través del comando: `git clone https://github.com/lgomezt/marcacion_tweets.git`.
