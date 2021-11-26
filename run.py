@@ -9,10 +9,13 @@ import pandas as pd
 import re
 import random
 from datetime import datetime
+from datetime import date
 import psycopg2
 from configparser import ConfigParser
 import getpass
 import socket
+from IPython.core.debugger import Pdb
+ipdb = Pdb()
 
 # Por seguridad no queremos que las credenciales de nuestra base estén directamente escritas 
 # en el script. Del mismo modo, quisieramos que si cambiamos de servidores, no sea necesario
@@ -37,26 +40,40 @@ def config(filename = 'database.ini', section = 'postgresql'):
     return db
 
 # Importamos los tweets
-query = "SELECT id, tweet_text FROM public.tweet;"
-credenciales = config()
-conexion = psycopg2.connect(**credenciales)
-tweets = pd.read_sql_query(sql = query, con = conexion)
+sql = False # Decidimos de donde sacar los datos
+if sql:
+    query = "SELECT id, tweet_text FROM public.tweet;"
+    credenciales = config()
+    conexion = psycopg2.connect(**credenciales)
+    tweets = pd.read_sql_query(sql = query, con = conexion)
 
-# Nos quedamos solo con las columnas necesarias
-tweets = tweets[["id", "tweet_text"]]
-# Usamos expresiones regulares para quitar los textos de los retweets
-tweets["tweet_text"] = tweets["tweet_text"].apply(lambda x: re.sub("RT @.+: ", "", x))
-# Eliminamos tweets duplicados
-tweets = tweets.drop_duplicates("tweet_text").reset_index(drop = True)
+    # Nos quedamos solo con las columnas necesarias
+    tweets = tweets[["id", "tweet_text"]]
+    # Usamos expresiones regulares para quitar los textos de los retweets
+    tweets["tweet_text"] = tweets["tweet_text"].apply(lambda x: re.sub("RT @.+: ", "", x))
+    # Eliminamos tweets duplicados
+    tweets = tweets.drop_duplicates("tweet_text").reset_index(drop = True)
+else:
+    path = r"C:\Users\User\OneDrive - Universidad de los Andes\Asistencia de investigacion\Twitter\App\\"
+    tweets = pd.read_pickle(path + "random_sample.gzip",
+        compression = "gzip")
+    tweets.columns = ["id", "tweet_text"]
+    hoy = str(date.today())
+    try:
+        resultados = pd.read_pickle(path + "resultados-" + hoy + ".gzip",
+            compression = "gzip")
+    except:
+        resultados = pd.DataFrame() # Creamos un dataframe pa guardar los resultados
 
 app = dash.Dash(__name__, external_stylesheets = [dbc.themes.CYBORG])
 server = app.server
 
 # Elementos layout
+logo = "https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.stickpng.com%2Fes%2Fimg%2Ficonos-logotipos-emojis%2Fcompanias-technologicas%2Flogo-twitter&psig=AOvVaw29Fw4TRGP1nBTMdqKu_X5T&ust=1637993456782000&source=images&cd=vfe&ved=0CAsQjRxqFwoTCKDzyravtfQCFQAAAAAdAAAAABAD"
 navbar = dbc.Navbar([
     html.A(
         dbc.Row([
-            dbc.Col(html.Img(src = "http://assets.stickpng.com/images/580b57fcd9996e24bc43c53e.png", height = "30px")),
+            dbc.Col(html.Img(src = logo, height = "30px")), #"http://assets.stickpng.com/images/580b57fcd9996e24bc43c53e.png"
             dbc.Col(dbc.NavbarBrand("Clasificador de tweets"))
         ]),
         href = "https://sites.google.com/site/tomasrodriguezbarraquer/"
@@ -70,6 +87,20 @@ texto = html.Div([
     dbc.Row([
         dbc.Col(html.H3(id = "texto_tweet", style = {'textAlign': 'center'}))
         ], justify = "center", align = "center"),
+    dbc.Row([
+        dbc.Col(
+            html.P("Si deseas participar en una rifa por tu participación, dejanos tu correo a continuación:")
+        ),
+        dbc.Col(
+            html.Div([
+            dcc.Input(
+                id = "correo",
+                type = "email",
+                placeholder = "¿Cuál es tu correo?",
+                style = {'textAlign': 'center', 'width': '100%'})
+            ])
+        )
+    ])
 ], style = {'padding': '10px 60px 30px'})
 
 mensaje = "De las opciones presentadas a continuación, seleccione la que crea que describe mejor el mensaje presentado."
@@ -85,7 +116,7 @@ botones = html.Div([
         dbc.Col(dbc.Button('Centro', id = 'centro', color = "primary", block = True)),
         dbc.Col(dbc.Button('Derecha', id = 'derecha', color = "primary", block = True)),
         dbc.Col(dbc.Button('No tengo idea', id = 'no_idea', color = "primary", block = True)),
-        dbc.Col(dbc.Button('No aplica', id = 'no_aplica', color = "primary", block = True))
+        dbc.Col(dbc.Button('No aplica o es un error', id = 'no_aplica', color = "primary", block = True))
         ])
 ], style = {'padding': '10px 60px 10px'})
 
@@ -108,33 +139,43 @@ def get_ip():
     return IP
 
 # Función para subir resultados a nuestra base message en postgres
-def guardar_resultado(fila):
+def guardar_resultado(fila, sql):
     """
     Usamos esta función para cargar la votación del usuario en la base de datos message.
     El parámetro fila debe ser una tupla que contenga 5 valores que hacen alusión a las variables
     usuario1, usuario2, id_tweet, marca y fecha.
     """
-    try:
-        # Cargamos los resultados en la base message
-        credenciales = config(filename = 'database.ini', section = 'postgresql')
-        conexion = psycopg2.connect(**credenciales)
-        # Creamos un cursor para editar la base
-        cursor = conexion.cursor()
+    # Si usamos sql, guardar los resultados en sql. Si no, guardarlos en local
+    if sql:
+        try:
+            # Cargamos los resultados en la base message
+            credenciales = config(filename = 'database.ini', section = 'postgresql')
+            conexion = psycopg2.connect(**credenciales)
+            # Creamos un cursor para editar la base
+            cursor = conexion.cursor()
 
-        # Insertamos una fila
-        query = """INSERT INTO message (usuario1, usuario2, id_tweet, marca, fecha) VALUES (%s, %s, %s, %s, %s);"""
-        cursor.execute(query, fila)
-        conexion.commit()
-        
-        count = cursor.rowcount
-        print(count, "Se ingresó la fila", fila)
+            # Insertamos una fila
+            query = """INSERT INTO message (usuario1, usuario2, correo, id_tweet, marca, fecha) VALUES (%s, %s, %s, %s, %s, %s);"""
+            cursor.execute(query, fila)
+            conexion.commit()
+            
+            count = cursor.rowcount
+            print(count, "Se ingresó la fila", fila)
 
-        if conexion:
-            cursor.close()
-            conexion.close()
+            if conexion:
+                cursor.close()
+                conexion.close()
 
-    except (Exception, psycopg2.Error) as error:
-        print("No se pudo ingresar la fila", error)
+        except (Exception, psycopg2.Error) as error:
+            print("No se pudo ingresar la fila", error)
+    else:
+        global resultados # Pesima práctica de programación pero toca
+        fila = pd.DataFrame(fila).T
+        fila.columns = ["usuario1", "usuario2", "correo", "id_tweet", "marca", "fecha"]
+        resultados = resultados.append(fila).reset_index(drop = True)
+        hoy = str(date.today())
+        resultados.to_pickle(path + "resultados-" + hoy + ".gzip",
+            compression = "gzip")
 
 # Cambiar de texto cuando se presione algún botón y guardar resultados.
 @app.callback(Output('texto_tweet', 'children'),
@@ -144,11 +185,12 @@ def guardar_resultado(fila):
               Input('derecha', 'n_clicks'),
               Input('no_idea', 'n_clicks'),
               Input('no_aplica', 'n_clicks'),
+              Input('correo', "value"),
               Input('fila', 'children'),
               )
-def cambiar_texto(izq, cen, der, no_idea, no_aplica, fila):
+def cambiar_texto(izq, cen, der, no_idea, no_aplica, correo, fila):
     # Cuando inicia la app se escoge un texto al azar
-    if (izq is None) & (cen is None) & (der is None) & (no_idea is None) & (no_aplica is None):
+    if (izq is None) & (cen is None) & (der is None) & (no_idea is None) & (no_aplica is None) & (correo is None):
         fila = random.randint(0, tweets.shape[0])
         tweet = tweets.iloc[fila].tweet_text
         return(tweet, fila)
@@ -169,13 +211,14 @@ def cambiar_texto(izq, cen, der, no_idea, no_aplica, fila):
     # Guardamos los resultados en una tupla 
     usuario1 = get_ip()
     usuario2 = getpass.getuser()
+    correo = str(correo)
     id_tweet = str(tweets.iloc[fila].id)
     marca = str(valor)
     fecha = str(datetime.now())
-    resultado = (usuario1, usuario2, id_tweet, marca, fecha)
+    resultado = (usuario1, usuario2, correo, id_tweet, marca, fecha)
     
     # Subir resultados a nuestra base message en postgres 
-    guardar_resultado(resultado)
+    guardar_resultado(fila = resultado, sql = sql)
 
     # Cambiamos el texto
     fila = random.randint(0, tweets.shape[0])
